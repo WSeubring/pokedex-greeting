@@ -48,12 +48,38 @@ echo
 "${INSTALL_DIR}/${SCRIPT_NAME}" --build-cache
 echo
 
-# Print shell config instructions
-echo "Done! To show a Pokedex entry on every terminal open, add this to your shell config:"
+# Detect shell config files
+SHELL_CONFIGS=()
+[[ -f "${HOME}/.bashrc" ]] && SHELL_CONFIGS+=("${HOME}/.bashrc")
+[[ -f "${HOME}/.zshrc" ]] && SHELL_CONFIGS+=("${HOME}/.zshrc")
+[[ -f "${HOME}/.config/fish/config.fish" ]] && SHELL_CONFIGS+=("${HOME}/.config/fish/config.fish")
+
+# Offer to add to each detected shell config
+ADDED=false
+for config in "${SHELL_CONFIGS[@]}"; do
+    if grep -q "pokedex-greeting" "${config}" 2>/dev/null; then
+        echo "Already present in ${config}, skipping."
+        ADDED=true
+        continue
+    fi
+
+    read -rp "Add pokedex-greeting to ${config}? [y/N] " answer
+    if [[ "${answer}" =~ ^[Yy]$ ]]; then
+        echo "" >> "${config}"
+        echo "# Show a random Pokedex entry on terminal open" >> "${config}"
+        echo "pokedex-greeting" >> "${config}"
+        echo "Added to ${config}"
+        ADDED=true
+    fi
+done
+
+if [[ "${ADDED}" == false ]]; then
+    echo "To show a Pokedex entry on every terminal open, add this to your shell config:"
+    echo "  pokedex-greeting"
+fi
+
 echo
-echo "  # bash (~/.bashrc) or zsh (~/.zshrc):"
-echo "  pokedex-greeting"
+echo "Stealth mode: output is automatically suppressed during screensharing (PipeWire)."
+echo "Use 'pokedex-greeting --no-stealth' to disable this."
 echo
-echo "  # fish (~/.config/fish/config.fish):"
-echo "  pokedex-greeting"
-echo
+echo "To update after a git pull, just re-run: bash install.sh"
