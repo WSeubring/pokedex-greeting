@@ -1,0 +1,157 @@
+#!/usr/bin/env python3
+"""Display a random pokemon sprite with Pokedex entry on terminal open."""
+
+import json
+import os
+import random
+import subprocess
+import sys
+import urllib.request
+
+CACHE_DIR = os.path.expanduser("~/.cache/pokedex-greeting")
+CACHE_FILE = os.path.join(CACHE_DIR, "pokedex.json")
+
+# Type -> color (ANSI 256-color codes that look good on dark terminals)
+TYPE_COLORS = {
+    "normal":   "\033[38;2;168;168;120m",
+    "fire":     "\033[38;2;240;128;48m",
+    "water":    "\033[38;2;104;144;240m",
+    "electric": "\033[38;2;248;208;48m",
+    "grass":    "\033[38;2;120;200;80m",
+    "ice":      "\033[38;2;152;216;216m",
+    "fighting": "\033[38;2;192;48;40m",
+    "poison":   "\033[38;2;160;64;160m",
+    "ground":   "\033[38;2;224;192;104m",
+    "flying":   "\033[38;2;168;144;240m",
+    "psychic":  "\033[38;2;248;88;136m",
+    "bug":      "\033[38;2;168;184;32m",
+    "rock":     "\033[38;2;184;160;56m",
+    "ghost":    "\033[38;2;112;88;152m",
+    "dragon":   "\033[38;2;112;56;248m",
+    "dark":     "\033[38;2;112;88;72m",
+    "steel":    "\033[38;2;184;184;208m",
+    "fairy":    "\033[38;2;238;153;172m",
+}
+
+RESET = "\033[0m"
+BOLD = "\033[1m"
+DIM = "\033[2m"
+
+
+def build_cache():
+    """Fetch all pokemon data from PokeAPI and cache locally."""
+    os.makedirs(CACHE_DIR, exist_ok=True)
+
+    # Get the pokemon list from pokemon-colorscripts
+    program_dir = os.path.dirname(os.path.realpath("/usr/bin/pokemon-colorscripts"))
+    with open(os.path.join(program_dir, "pokemon.json")) as f:
+        colorscript_pokemon = json.load(f)
+
+    names = [p["name"] for p in colorscript_pokemon]
+
+    print(f"Building Pokedex cache ({len(names)} pokemon)... ", end="", flush=True)
+
+    pokedex = {}
+    headers = {"User-Agent": "pokedex-greeting/1.0"}
+
+    def fetch_pokemon(name):
+        """Fetch pokemon data, falling back to species endpoint for form variants."""
+        # Try direct lookup first
+        try:
+            url = f"https://pokeapi.co/api/v2/pokemon/{name}"
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                data = json.loads(resp.read())
+                return {"id": data["id"], "types": [t["type"]["name"] for t in data["types"]]}
+        except Exception:
+            pass
+
+        # Fallback: look up species to find the default variety name
+        try:
+            url = f"https://pokeapi.co/api/v2/pokemon-species/{name}"
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                species = json.loads(resp.read())
+                default = next(v for v in species["varieties"] if v["is_default"])
+                variety_name = default["pokemon"]["name"]
+
+            url = f"https://pokeapi.co/api/v2/pokemon/{variety_name}"
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                data = json.loads(resp.read())
+                return {"id": data["id"], "types": [t["type"]["name"] for t in data["types"]]}
+        except Exception:
+            pass
+
+        return None
+
+    for i, name in enumerate(names):
+        result = fetch_pokemon(name)
+        if result:
+            pokedex[name] = {"id": result["id"], "name": name, "types": result["types"]}
+        else:
+            pokedex[name] = {"id": i + 1, "name": name, "types": ["unknown"]}
+
+        # Progress indicator
+        if (i + 1) % 50 == 0:
+            print(f"{i + 1}", end=".. ", flush=True)
+
+    print("done!")
+
+    with open(CACHE_FILE, "w") as f:
+        json.dump(pokedex, f)
+
+    return pokedex
+
+
+def load_cache():
+    """Load cached pokedex data, building it if needed."""
+    if os.path.exists(CACHE_FILE):
+        with open(CACHE_FILE) as f:
+            return json.load(f)
+    return build_cache()
+
+
+def format_type(t):
+    """Color-code a pokemon type."""
+    color = TYPE_COLORS.get(t, "")
+    return f"{color}{BOLD}{t.upper()}{RESET}"
+
+
+def display(pokemon):
+    """Show the sprite with a Pokedex-style info bar."""
+    name = pokemon["name"]
+    dex_num = pokemon["id"]
+    types = pokemon["types"]
+
+    # Get the sprite
+    try:
+        sprite = subprocess.run(
+            ["pokemon-colorscripts", "--no-title", "-n", name],
+            capture_output=True, text=True, timeout=5,
+        ).stdout.rstrip("\n")
+    except Exception:
+        return
+
+    # Format the info line
+    display_name = name.replace("-", " ").title()
+    type_str = " / ".join(format_type(t) for t in types)
+    info_line = f"{DIM}#{dex_num:03d}{RESET}  {BOLD}{display_name}{RESET}  {DIM}[{RESET}{type_str}{DIM}]{RESET}"
+
+    print(sprite)
+    print(info_line)
+    print()
+
+
+def main():
+    if "--build-cache" in sys.argv:
+        build_cache()
+        return
+
+    pokedex = load_cache()
+    name = random.choice(list(pokedex.keys()))
+    display(pokedex[name])
+
+
+if __name__ == "__main__":
+    main()
