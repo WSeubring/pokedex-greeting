@@ -143,9 +143,47 @@ def display(pokemon):
     print()
 
 
+def is_screensharing():
+    """Detect active screensharing via PipeWire.
+
+    Returns True when a screen-capture video source is found in PipeWire
+    (created by xdg-desktop-portal during screensharing), while ignoring
+    regular webcam devices (v4l2).
+    """
+    try:
+        result = subprocess.run(
+            ["pw-dump"], capture_output=True, text=True, timeout=3,
+        )
+        if result.returncode != 0:
+            return False
+        nodes = json.loads(result.stdout)
+    except Exception:
+        return False
+
+    for node in nodes:
+        props = node.get("info", {}).get("props", {})
+        media_class = props.get("media.class", "")
+
+        # Screen capture sources created by xdg-desktop-portal show up as
+        # Video/Source nodes that are *not* backed by v4l2 (webcam).
+        if media_class == "Video/Source" and "api.v4l2.path" not in props:
+            return True
+
+        # Some setups surface the portal stream as Stream/Output/Video.
+        if media_class == "Stream/Output/Video":
+            return True
+
+    return False
+
+
 def main():
     if "--build-cache" in sys.argv:
         build_cache()
+        return
+
+    no_stealth = "--no-stealth" in sys.argv
+
+    if not no_stealth and is_screensharing():
         return
 
     pokedex = load_cache()

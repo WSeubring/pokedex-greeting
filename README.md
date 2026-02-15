@@ -13,7 +13,7 @@ On each invocation, the script picks a random pokemon from all 905 available and
 - The pokemon's name
 - Its type(s), color-coded to match the games
 
-Type data is fetched once from PokeAPI and cached locally (`~/.cache/pokedex-greeting/pokedex.json`), so subsequent runs are instant (~150ms).
+Type data is fetched once from PokeAPI and cached locally (`~/.cache/pokedex-greeting/pokedex.json`), so subsequent runs are near-instant (~200ms).
 
 ## Prerequisites
 
@@ -63,8 +63,19 @@ echo 'pokedex-greeting' >> ~/.bashrc
 ## Usage
 
 ```bash
-pokedex-greeting              # Show a random Pokedex entry
+pokedex-greeting                # Show a random Pokedex entry
 pokedex-greeting --build-cache  # Rebuild the type/dex cache
+pokedex-greeting --no-stealth   # Show greeting even during screenshare
+```
+
+## Stealth mode
+
+By default, `pokedex-greeting` detects active screensharing (via PipeWire) and suppresses output so pokemon sprites don't show up in work demos. This works automatically on Wayland desktops that use xdg-desktop-portal (Hyprland, GNOME, KDE, Sway, etc.).
+
+To disable this and always show pokemon, pass `--no-stealth`:
+
+```bash
+pokedex-greeting --no-stealth
 ```
 
 ## Acknowledgements
