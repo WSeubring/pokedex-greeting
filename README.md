@@ -13,6 +13,8 @@ On each invocation, the script picks a random pokemon from all 905 available and
 - The pokemon's name
 - Its type(s), color-coded to match the games
 
+There's a configurable chance of encountering a **shiny** pokemon, complete with a sparkle animation and alternate-color sprite.
+
 Type data is fetched once from PokeAPI and cached locally (`~/.cache/pokedex-greeting/pokedex.json`), so subsequent runs are near-instant (~200ms).
 
 ## Prerequisites
@@ -44,7 +46,8 @@ The install script will:
 
 1. Copy `pokedex-greeting` to `~/.local/bin/`
 2. Build the Pokedex cache (fetches type data from PokeAPI, takes ~2 minutes on first run)
-3. Print instructions for adding it to your shell config
+3. Run the shiny rate setup (pick how rare shiny encounters are)
+4. Print instructions for adding it to your shell config
 
 ### Manual install
 
@@ -66,7 +69,20 @@ echo 'pokedex-greeting' >> ~/.bashrc
 pokedex-greeting                # Show a random Pokedex entry
 pokedex-greeting --build-cache  # Rebuild the type/dex cache
 pokedex-greeting --no-stealth   # Show greeting even during screenshare
+pokedex-greeting --setup        # Change the shiny encounter rate
+pokedex-greeting --shiny-test   # Force a shiny encounter (for testing)
 ```
+
+## Shiny pokemon
+
+Every greeting has a chance of showing a shiny variant with an animated sparkle reveal. The rate is configured during install or anytime with `--setup`:
+
+- **1/4096** -- Game-accurate (Gen VI+)
+- **1/512** -- Masuda method
+- **1/100** -- Practical
+- **Custom** -- Any 1-in-N rate
+
+Config is stored in `~/.cache/pokedex-greeting/config.json`.
 
 ## Stealth mode
 

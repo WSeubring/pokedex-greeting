@@ -48,6 +48,9 @@ echo
 "${INSTALL_DIR}/${SCRIPT_NAME}" --build-cache
 echo
 
+# Run shiny setup
+"${INSTALL_DIR}/${SCRIPT_NAME}" --setup
+
 # Detect shell config files
 SHELL_CONFIGS=()
 [[ -f "${HOME}/.bashrc" ]] && SHELL_CONFIGS+=("${HOME}/.bashrc")

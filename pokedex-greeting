@@ -6,10 +6,12 @@ import os
 import random
 import subprocess
 import sys
+import time
 import urllib.request
 
 CACHE_DIR = os.path.expanduser("~/.cache/pokedex-greeting")
 CACHE_FILE = os.path.join(CACHE_DIR, "pokedex.json")
+CONFIG_FILE = os.path.join(CACHE_DIR, "config.json")
 
 # Type -> color (ANSI 256-color codes that look good on dark terminals)
 TYPE_COLORS = {
@@ -36,6 +38,74 @@ TYPE_COLORS = {
 RESET = "\033[0m"
 BOLD = "\033[1m"
 DIM = "\033[2m"
+YELLOW = "\033[38;2;255;215;0m"
+
+DEFAULT_SHINY_RATE = 100
+
+SHINY_PRESETS = [
+    ("1/4096", 4096, "Game-accurate (Gen VI+)"),
+    ("1/512", 512, "Masuda method"),
+    ("1/100", 100, "Practical"),
+    ("Custom", 0, "Enter your own 1-in-N rate"),
+]
+
+SPARKLE_CHARS = ["✦", "✧", "⋆", "·"]
+
+
+def load_config():
+    """Load config, returning defaults if missing."""
+    if os.path.exists(CONFIG_FILE):
+        with open(CONFIG_FILE) as f:
+            return json.load(f)
+    return None
+
+
+def save_config(config):
+    """Write config to disk."""
+    os.makedirs(CACHE_DIR, exist_ok=True)
+    with open(CONFIG_FILE, "w") as f:
+        json.dump(config, f, indent=2)
+
+
+def run_setup():
+    """Interactive shiny rate picker."""
+    print(f"\n{BOLD}Pokedex Greeting — Shiny Setup{RESET}\n")
+    print("How rare should shiny encounters be?\n")
+
+    for i, (label, rate, desc) in enumerate(SHINY_PRESETS, 1):
+        if rate:
+            print(f"  {BOLD}{i}{RESET}) {label}  {DIM}— {desc}{RESET}")
+        else:
+            print(f"  {BOLD}{i}{RESET}) {label}     {DIM}— {desc}{RESET}")
+
+    print()
+    while True:
+        try:
+            choice = input(f"Pick [{BOLD}1-{len(SHINY_PRESETS)}{RESET}]: ").strip()
+            idx = int(choice) - 1
+            if 0 <= idx < len(SHINY_PRESETS):
+                break
+        except (ValueError, EOFError):
+            pass
+        print("Invalid choice, try again.")
+
+    _, rate, _ = SHINY_PRESETS[idx]
+
+    if rate == 0:
+        while True:
+            try:
+                custom = input(f"Enter rate (1 in {BOLD}N{RESET}): ").strip()
+                rate = int(custom)
+                if rate >= 1:
+                    break
+            except (ValueError, EOFError):
+                pass
+            print("Enter a positive integer.")
+
+    config = {"shiny_rate": rate}
+    save_config(config)
+    print(f"\n{BOLD}Set!{RESET} Shiny rate: 1/{rate}\n")
+    return config
 
 
 def build_cache():
@@ -118,27 +188,93 @@ def format_type(t):
     return f"{color}{BOLD}{t.upper()}{RESET}"
 
 
-def display(pokemon):
+def sparkle_frame(width, height):
+    """Generate a frame of random sparkle characters."""
+    lines = []
+    for _ in range(height):
+        line = ""
+        for _ in range(width):
+            if random.random() < 0.15:
+                line += f"{YELLOW}{random.choice(SPARKLE_CHARS)}{RESET}"
+            else:
+                line += " "
+        lines.append(line)
+    return "\n".join(lines)
+
+
+def animate_shiny(sprite_lines):
+    """Play sparkle flash frames, then reveal the shiny sprite line-by-line."""
+    # Measure sprite dimensions (use raw chars for width estimate)
+    height = len(sprite_lines)
+    # Approximate visible width from the longest line, stripping ANSI codes
+    import re
+    ansi_re = re.compile(r"\033\[[0-9;]*m")
+    widths = [len(ansi_re.sub("", l)) for l in sprite_lines]
+    width = max(widths) if widths else 30
+
+    hide_cursor = "\033[?25l"
+    show_cursor = "\033[?25h"
+    move_up = f"\033[{height}A"
+
+    sys.stdout.write(hide_cursor)
+    sys.stdout.flush()
+
+    try:
+        # Phase 1: sparkle flash frames
+        for _ in range(3):
+            frame = sparkle_frame(width, height)
+            sys.stdout.write(frame + "\n")
+            sys.stdout.flush()
+            time.sleep(0.12)
+            sys.stdout.write(move_up + "\r")
+
+        # Clear the sparkle area
+        for _ in range(height):
+            sys.stdout.write(" " * width + "\n")
+        sys.stdout.write(move_up + "\r")
+
+        # Phase 2: line-by-line reveal
+        for line in sprite_lines:
+            print(line)
+            sys.stdout.flush()
+            time.sleep(0.02)
+    finally:
+        sys.stdout.write(show_cursor)
+        sys.stdout.flush()
+
+
+def display(pokemon, shiny=False):
     """Show the sprite with a Pokedex-style info bar."""
     name = pokemon["name"]
     dex_num = pokemon["id"]
     types = pokemon["types"]
 
     # Get the sprite
+    cmd = ["pokemon-colorscripts", "--no-title", "-n", name]
+    if shiny:
+        cmd.append("-s")
     try:
         sprite = subprocess.run(
-            ["pokemon-colorscripts", "--no-title", "-n", name],
-            capture_output=True, text=True, timeout=5,
+            cmd, capture_output=True, text=True, timeout=5,
         ).stdout.rstrip("\n")
     except Exception:
         return
 
+    sprite_lines = sprite.split("\n")
+
+    if shiny:
+        animate_shiny(sprite_lines)
+    else:
+        print(sprite)
+
     # Format the info line
     display_name = name.replace("-", " ").title()
     type_str = " / ".join(format_type(t) for t in types)
-    info_line = f"{DIM}#{dex_num:03d}{RESET}  {BOLD}{display_name}{RESET}  {DIM}[{RESET}{type_str}{DIM}]{RESET}"
+    if shiny:
+        info_line = f"{YELLOW}✦{RESET} {DIM}#{dex_num:03d}{RESET}  {BOLD}{display_name}{RESET}  {DIM}[{RESET}{type_str}{DIM}]{RESET}  {YELLOW}✦ SHINY ✦{RESET}"
+    else:
+        info_line = f"{DIM}#{dex_num:03d}{RESET}  {BOLD}{display_name}{RESET}  {DIM}[{RESET}{type_str}{DIM}]{RESET}"
 
-    print(sprite)
     print(info_line)
     print()
 
@@ -166,7 +302,10 @@ def is_screensharing():
 
         # Screen capture sources created by xdg-desktop-portal show up as
         # Video/Source nodes that are *not* backed by v4l2 (webcam).
-        if media_class == "Video/Source" and "api.v4l2.path" not in props:
+        # Exclude gamescope which creates Video/Source nodes for gaming,
+        # not screensharing.
+        node_name = props.get("node.name", "")
+        if media_class == "Video/Source" and "api.v4l2.path" not in props and "gamescope" not in node_name:
             return True
 
         # Some setups surface the portal stream as Stream/Output/Video.
@@ -181,14 +320,26 @@ def main():
         build_cache()
         return
 
+    if "--setup" in sys.argv:
+        run_setup()
+        return
+
+    # Load or run first-time setup
+    config = load_config()
+    if config is None:
+        config = run_setup()
+
     no_stealth = "--no-stealth" in sys.argv
 
     if not no_stealth and is_screensharing():
         return
 
+    shiny_rate = config.get("shiny_rate", DEFAULT_SHINY_RATE)
+
     pokedex = load_cache()
     name = random.choice(list(pokedex.keys()))
-    display(pokedex[name])
+    shiny = "--shiny-test" in sys.argv or random.randint(1, shiny_rate) == 1
+    display(pokedex[name], shiny=shiny)
 
 
 if __name__ == "__main__":
