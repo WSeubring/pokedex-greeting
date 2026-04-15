@@ -43,7 +43,12 @@ def build_cache():
     os.makedirs(CACHE_DIR, exist_ok=True)
 
     # Get the pokemon list from pokemon-colorscripts
-    program_dir = os.path.dirname(os.path.realpath("/usr/bin/pokemon-colorscripts"))
+    import shutil
+    pcs_path = shutil.which("pokemon-colorscripts")
+    if not pcs_path:
+        print("Error: pokemon-colorscripts not found on PATH", file=sys.stderr)
+        sys.exit(1)
+    program_dir = os.path.dirname(os.path.realpath(pcs_path))
     with open(os.path.join(program_dir, "pokemon.json")) as f:
         colorscript_pokemon = json.load(f)
 
